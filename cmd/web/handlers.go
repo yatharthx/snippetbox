@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"snippetbox.yatharthx.com/internal/models"
+	"snippetbox.yatharthx.com/internal/validator"
 )
 
 func (app *application) home(w http.ResponseWriter, r *http.Request) {
@@ -57,10 +56,10 @@ func (app *application) snippetCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 type snippetCreateForm struct {
-	Title       string
-	Content     string
-	ExpiresAt   int
-	FieldErrors map[string]string
+	Title     string
+	Content   string
+	ExpiresAt int
+	validator.Validator
 }
 
 func (app *application) snippetCreatePost(w http.ResponseWriter, r *http.Request) {
@@ -77,27 +76,17 @@ func (app *application) snippetCreatePost(w http.ResponseWriter, r *http.Request
 	}
 
 	form := snippetCreateForm{
-		Title:       r.PostForm.Get("title"),
-		Content:     r.PostForm.Get("content"),
-		ExpiresAt:   expiresAt,
-		FieldErrors: map[string]string{},
+		Title:     r.PostForm.Get("title"),
+		Content:   r.PostForm.Get("content"),
+		ExpiresAt: expiresAt,
 	}
 
-	if strings.TrimSpace(form.Title) == "" {
-		form.FieldErrors["title"] = "This field cannot be blank"
-	} else if utf8.RuneCountInString(form.Title) > 100 {
-		form.FieldErrors["title"] = "This field cannot be more than 100 characters long"
-	}
+	form.CheckField(validator.NotBlank(form.Title), "title", "This field cannot be blank")
+	form.CheckField(validator.MaxChars(form.Title, 100), "title", "This field cannot be more than 100 characters long")
+	form.CheckField(validator.NotBlank(form.Content), "content", "This field cannot be blank")
+	form.CheckField(validator.PermittedValue(form.ExpiresAt, 1, 7, 365), "expires", "This field must equal 1, 7 or 365")
 
-	if strings.TrimSpace(form.Content) == "" {
-		form.FieldErrors["content"] = "This field cannot be blank"
-	}
-
-	if form.ExpiresAt != 1 && form.ExpiresAt != 7 && form.ExpiresAt != 365 {
-		form.FieldErrors["expires"] = "This field must equal 1, 7, or 365"
-	}
-
-	if len(form.FieldErrors) > 0 {
+	if !form.Valid() {
 		data := app.newTemplateData()
 		data.Form = form
 		app.render(w, r, http.StatusUnprocessableEntity, "create.tmpl", data)
